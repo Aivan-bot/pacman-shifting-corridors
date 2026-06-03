@@ -490,12 +490,12 @@ function isWalkable(col, row) {
 // ── Entity-Kollision prüfen: Stoppt Entity, wenn nächste Zelle Wand ist ──
 function stopIfWallBlocked(entity, entityRef) {
   if (entity.dir === DIR.NONE) return false;
-  const nextCol = Math.round(entity.x) + entity.dir.dx;
-  const nextRow = Math.round(entity.y) + entity.dir.dy;
+  const nextCol = entity.col + entity.dir.dx;
+  const nextRow = entity.row + entity.dir.dy;
   if (!isWalkable(nextCol, nextRow)) {
     entity.dir = DIR.NONE;
-    entity.col = Math.round(entity.x);
-    entity.row = Math.round(entity.y);
+    entity.col = entity.col;
+    entity.row = entity.row;
     entity.x = entity.col;
     entity.y = entity.row;
     return true; // Gestoppt — Kollision erkannt
@@ -638,13 +638,13 @@ function moveGhosts(dt) {
     if (ghost.dir === DIR.NONE) return;
 
     // Kollision VOR der Bewegung prüfen
-    const nextCol = Math.round(ghost.x) + ghost.dir.dx;
-    const nextRow = Math.round(ghost.y) + ghost.dir.dy;
+    const nextCol = ghost.col + ghost.dir.dx;
+    const nextRow = ghost.row + ghost.dir.dy;
     if (!isWalkable(nextCol, nextRow)) {
       // Blockiert — Richtung umkehren und neue wählen
       ghost.dir = { dx: -ghost.dir.dx, dy: -ghost.dir.dy };
-      const altCol = Math.round(ghost.x) + ghost.dir.dx;
-      const altRow = Math.round(ghost.y) + ghost.dir.dy;
+      const altCol = ghost.col + ghost.dir.dx;
+      const altRow = ghost.row + ghost.dir.dy;
       if (!isWalkable(altCol, altRow)) {
         // Auch rückwärts blockiert — alle Optionen versuchen
         const options = [];
