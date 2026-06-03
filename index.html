@@ -602,21 +602,58 @@ function moveGhosts(dt) {
       ensureEntityWalkable(ghost);
     }
 
+    // Wenn Geist auf einem Grid-Punkt ist: neue Richtung wählen
+    const atGridPoint = Math.abs(ghost.x - ghost.col) < 0.01 && Math.abs(ghost.y - ghost.row) < 0.01;
+    if (atGridPoint) {
+      if (!ghost.eaten) {
+        chooseGhostDirection(ghost);
+      } else {
+        // Eaten-Geister zurück zum Spawn
+        if (ghost.col === 8 && ghost.row === 7) {
+          ghost.eaten = false;
+          ghost.scared = false;
+          ghost.spawnTimer = 0;
+          chooseGhostDirection(ghost);
+        }
+      }
+    }
+
+    // Wenn keine Richtung: weiter warten
+    if (ghost.dir === DIR.NONE) return;
+
+    // Kollision VOR der Bewegung prüfen
+    const nextCol = Math.round(ghost.x) + ghost.dir.dx;
+    const nextRow = Math.round(ghost.y) + ghost.dir.dy;
+    if (!isWalkable(nextCol, nextRow)) {
+      // Blockiert — Richtung umkehren und neue wählen
+      ghost.dir = { dx: -ghost.dir.dx, dy: -ghost.dir.dy };
+      const altCol = Math.round(ghost.x) + ghost.dir.dx;
+      const altRow = Math.round(ghost.y) + ghost.dir.dy;
+      if (!isWalkable(altCol, altRow)) {
+        // Auch rückwärts blockiert — alle Optionen versuchen
+        const options = [];
+        const opposite = { dx: -ghost.dir.dx, dy: -ghost.dir.dy };
+        [DIR.UP, DIR.DOWN, DIR.LEFT, DIR.RIGHT].forEach(d => {
+          if (d.dx === opposite.dx && d.dy === opposite.dy) return;
+          const nc = ghost.col + d.dx;
+          const nr = ghost.row + d.dy;
+          if (isWalkable(nc, nr)) options.push(d);
+        });
+        if (options.length > 0) {
+          ghost.dir = options[Math.floor(Math.random() * options.length)];
+        } else if (isWalkable(ghost.col + opposite.dx, ghost.row + opposite.dy)) {
+          ghost.dir = opposite;
+        }
+      }
+      return;
+    }
+
     const speed = ghost.getSpeed() * dt;
     ghost.frameTimer += dt;
     if (ghost.frameTimer > 0.15) {
       ghost.frame = (ghost.frame + 1) % 4;
       ghost.frameTimer = 0;
     }
-
-    // Bewegung — Kollision VOR der Bewegung prüfen!
-    if (stopIfWallBlocked(ghost, 'ghost')) {
-      // Gestoppt — Richtung umkehren
-      ghost.dir = { dx: -ghost.dir.dx, dy: -ghost.dir.dy };
-      return;
-    }
-
-    if (ghost.dir === DIR.NONE) return;
 
     ghost.x += ghost.dir.dx * speed;
     ghost.y += ghost.dir.dy * speed;
@@ -631,27 +668,13 @@ function moveGhosts(dt) {
       ghost.x = ghost.col;
       ghost.y = ghost.row;
 
-      // WICHTIG: Prüfe ob die Zielzelle begehbar ist
+      // Zielzelle prüfen
       if (!isWalkable(ghost.col, ghost.row)) {
-        // Nicht begehbar — zurück zur vorherigen Position
         ghost.col -= ghost.dir.dx;
         ghost.row -= ghost.dir.dy;
         ghost.x = ghost.col;
         ghost.y = ghost.row;
-        // Richtung umkehren
         ghost.dir = { dx: -ghost.dir.dx, dy: -ghost.dir.dy };
-      } else {
-        // Richtungsentscheidung am Kreuzungspunkt
-        if (!ghost.eaten) {
-          chooseGhostDirection(ghost);
-        } else {
-          // Eaten-Geister zurück zum Spawn
-          if (ghost.col === 8 && ghost.row === 7) {
-            ghost.eaten = false;
-            ghost.scared = false;
-            ghost.spawnTimer = 0;
-          }
-        }
       }
     }
 
