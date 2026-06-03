@@ -388,6 +388,7 @@ class Ghost {
     this.frame = 0;
     this.frameTimer = 0;
     this.spawnTimer = 0;
+    this.respawnTimer = 0; // Wartezeit nach dem Essen
   }
 
   getSpeed() {
@@ -597,6 +598,17 @@ function moveGhosts(dt) {
       return;
     }
 
+    // Respawn-Timer (Wartezeit nach dem Essen)
+    if (ghost.respawnTimer > 0) {
+      ghost.respawnTimer -= dt;
+      if (ghost.respawnTimer <= 0) {
+        ghost.respawnTimer = 0;
+        // Nach der Wartezeit: Geist als normaler Geist erscheinen lassen, aber kurz warten
+        ghost.spawnTimer = 1.0; // 1 Sekunde Wartezeit vor dem Losgehen
+      }
+      return; // Geist ist noch im "Warte"-Modus
+    }
+
     // Sicherheitscheck: Bin ich noch auf einer begehbaren Zelle?
     if (!isWalkable(ghost.col, ghost.row)) {
       ensureEntityWalkable(ghost);
@@ -609,9 +621,10 @@ function moveGhosts(dt) {
         chooseGhostDirection(ghost);
       } else {
         // Eaten-Geister zurück zum Spawn
-        if (ghost.col === 8 && ghost.row === 7) {
+        if (ghost.col === 8 && ghost.row === 7 && Math.abs(ghost.x - 8) < 0.1 && Math.abs(ghost.y - 7) < 0.1) {
           ghost.eaten = false;
           ghost.scared = false;
+          ghost.respawnTimer = 2.0; // 2 Sekunden Wartezeit vor dem Wiedererscheinen
           ghost.spawnTimer = 0;
           chooseGhostDirection(ghost);
         }
@@ -967,6 +980,11 @@ function drawGhost(ghost) {
   }
   if (ghost.eaten) {
     // Nur Augen zeichnen
+    drawGhostEyes(x, y, ghost.dir, r * 0.5);
+    return;
+  }
+  if (ghost.respawnTimer > 0) {
+    // Wartezeit am Spawn: Nur Augen zeichnen
     drawGhostEyes(x, y, ghost.dir, r * 0.5);
     return;
   }
