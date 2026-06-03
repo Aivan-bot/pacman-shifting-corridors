@@ -516,8 +516,18 @@ function movePacman(dt) {
       pacman.x = pacman.col;
       pacman.y = pacman.row;
 
-      // Pill sammeln
-      const cell = getCell(pacman.col, pacman.row);
+      // WICHTIG: Prüfe ob die Zielzelle noch begehbar ist
+      // (kann sich durch Grid-Shift geändert haben)
+      if (!isWalkable(pacman.col, pacman.row)) {
+        // Nicht begehbar — zurück zur vorherigen Position
+        pacman.col -= pacman.dir.dx;
+        pacman.row -= pacman.dir.dy;
+        pacman.x = pacman.col;
+        pacman.y = pacman.row;
+        pacman.dir = DIR.NONE;
+      } else {
+        // Pill sammeln
+        const cell = getCell(pacman.col, pacman.row);
       if (cell === PILL) {
         setCell(pacman.col, pacman.row, PATH);
         score += 10;
@@ -531,9 +541,10 @@ function movePacman(dt) {
 
       updateHUD();
 
-      // Level abgeschlossen?
-      if (pillsRemaining <= 0) {
-        nextLevel();
+        // Level abgeschlossen?
+        if (pillsRemaining <= 0) {
+          nextLevel();
+        }
       }
     }
   }
@@ -574,15 +585,26 @@ function moveGhosts(dt) {
       ghost.x = ghost.col;
       ghost.y = ghost.row;
 
-      // Richtungsentscheidung am Kreuzungspunkt
-      if (!ghost.eaten) {
-        chooseGhostDirection(ghost);
+      // WICHTIG: Prüfe ob die Zielzelle begehbar ist
+      if (!isWalkable(ghost.col, ghost.row)) {
+        // Nicht begehbar — zurück zur vorherigen Position
+        ghost.col -= ghost.dir.dx;
+        ghost.row -= ghost.dir.dy;
+        ghost.x = ghost.col;
+        ghost.y = ghost.row;
+        // Richtung umkehren
+        ghost.dir = { dx: -ghost.dir.dx, dy: -ghost.dir.dy };
       } else {
-        // Eaten-Geister zurück zum Spawn
-        if (ghost.col === 8 && ghost.row === 7) {
-          ghost.eaten = false;
-          ghost.scared = false;
-          ghost.spawnTimer = 0;
+        // Richtungsentscheidung am Kreuzungspunkt
+        if (!ghost.eaten) {
+          chooseGhostDirection(ghost);
+        } else {
+          // Eaten-Geister zurück zum Spawn
+          if (ghost.col === 8 && ghost.row === 7) {
+            ghost.eaten = false;
+            ghost.scared = false;
+            ghost.spawnTimer = 0;
+          }
         }
       }
     }
@@ -723,44 +745,60 @@ function nextLevel() {
   showLayerIndicator('Level ' + level + '!');
 }
 
+// ── Entity auf begehbarer Zelle sichernd ──
+function ensureEntityWalkable(entity) {
+  // Prüfe ob Entity auf einer Wand steht
+  if (getCell(entity.col, entity.row) === WALL) {
+    // Versuche links/rechts
+    if (isWalkable(entity.col - 1, entity.row)) {
+      entity.col--;
+    } else if (isWalkable(entity.col + 1, entity.row)) {
+      entity.col++;
+    } else if (isWalkable(entity.col, entity.row - 1)) {
+      entity.row--;
+    } else if (isWalkable(entity.col, entity.row + 1)) {
+      entity.row++;
+    } else {
+      // Notfall: zurück zum Spawn
+      entity.col = Math.floor(COLS / 2);
+      entity.row = ROWS - 3;
+    }
+    entity.x = entity.col;
+    entity.y = entity.row;
+  }
+}
+
 // ── Verschieben eines Ganges ──
 function shiftLayer(row, direction) {
   if (shiftsLeft <= 0) return;
   if (direction === 0) return;
 
+  const oldShift = gridShifts[row];
   gridShifts[row] = ((gridShifts[row] + direction) % COLS + COLS) % COLS;
   shiftsLeft--;
   updateShiftUI();
 
-  // Pac-Man und Geister anpassen
-  adjustEntityAfterShift(pacman);
-  ghosts.forEach(g => adjustEntityAfterShift(g));
-
-  // Visuelles Feedback
-  showLayerIndicator('Reihe ' + row + ' verschoben!');
-}
-
-function adjustEntityAfterShift(entity) {
-  // Wenn Entity sich im verschobenen Bereich befindet, Position anpassen
-  const shift = gridShifts[entity.row] || 0;
-  if (shift > 0) {
-    // Entity muss ihre Grid-Position überprüfen
-    const cell = getCell(entity.col, entity.row);
-    if (cell === WALL) {
-      // Entity ist in einer Wand — versuche nach links oder rechts zu rutschen
-      if (isWalkable(entity.col - 1, entity.row)) {
-        entity.col--;
-      } else if (isWalkable(entity.col + 1, entity.row)) {
-        entity.col++;
-      } else {
-        // Zurücksetzen
-        entity.col = Math.floor(COLS / 2);
-        entity.row = ROWS - 3;
-      }
-      entity.x = entity.col;
-      entity.y = entity.row;
+  // Nur Entities in der verschobenen Reihe anpassen
+  // Der Shift verschiebt das Grid — Entities müssen mitwandern
+  const shiftDiff = gridShifts[row] - oldShift;
+  if (shiftDiff !== 0) {
+    // PacMan
+    if (pacman.row === row) {
+      pacman.col = ((pacman.col - direction + COLS) % COLS);
+      pacman.x = pacman.col;
+      ensureEntityWalkable(pacman);
     }
+    // Geister
+    ghosts.forEach(g => {
+      if (g.row === row && g.spawnTimer <= 0) {
+        g.col = ((g.col - direction + COLS) % COLS);
+        g.x = g.col;
+        ensureEntityWalkable(g);
+      }
+    });
   }
+
+  showLayerIndicator('Reihe ' + row + ' verschoben!');
 }
 
 // ── Zeichnen ──
