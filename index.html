@@ -617,9 +617,7 @@ function moveGhosts(dt) {
     // Wenn Geist auf einem Grid-Punkt ist: neue Richtung wählen
     const atGridPoint = Math.abs(ghost.x - ghost.col) < 0.01 && Math.abs(ghost.y - ghost.row) < 0.01;
     if (atGridPoint) {
-      if (!ghost.eaten) {
-        chooseGhostDirection(ghost);
-      } else {
+      if (ghost.eaten) {
         // Eaten-Geister zurück zum Spawn
         if (ghost.col === 8 && ghost.row === 7 && Math.abs(ghost.x - 8) < 0.1 && Math.abs(ghost.y - 7) < 0.1) {
           ghost.eaten = false;
@@ -627,7 +625,12 @@ function moveGhosts(dt) {
           ghost.respawnTimer = 2.0; // 2 Sekunden Wartezeit vor dem Wiedererscheinen
           ghost.spawnTimer = 0;
           chooseGhostDirection(ghost);
+        } else {
+          // Noch nicht am Spawn — Richtung zum Spawn wählen
+          chooseGhostDirection(ghost);
         }
+      } else {
+        chooseGhostDirection(ghost);
       }
     }
 
