@@ -487,18 +487,42 @@ function isWalkable(col, row) {
 }
 
 // ── Entity-Kollision prüfen: Stoppt Entity, wenn nächste Zelle Wand ist ──
-function stopIfWallBlocked(entity) {
-  if (entity.dir === DIR.NONE) return;
+function stopIfWallBlocked(entity, entityRef) {
+  if (entity.dir === DIR.NONE) return false;
   const nextCol = Math.round(entity.x) + entity.dir.dx;
   const nextRow = Math.round(entity.y) + entity.dir.dy;
   if (!isWalkable(nextCol, nextRow)) {
     entity.dir = DIR.NONE;
-    // Zur nächsten Kante snappen (nicht durch Wand gleiten lassen)
     entity.col = Math.round(entity.x);
     entity.row = Math.round(entity.y);
     entity.x = entity.col;
     entity.y = entity.row;
+    return true; // Gestoppt — Kollision erkannt
   }
+  return false;
+}
+
+// ── Pill an aktueller Grid-Position sammeln ──
+function collectPillAt(entity) {
+  const cell = getCell(entity.col, entity.row);
+  if (cell === PILL) {
+    setCell(entity.col, entity.row, PATH);
+    score += 10;
+    pillsRemaining--;
+    updateHUD();
+    if (pillsRemaining <= 0) nextLevel();
+    return true;
+  }
+  if (cell === POWER) {
+    setCell(entity.col, entity.row, PATH);
+    score += 50;
+    pillsRemaining--;
+    makeGhostsScared();
+    updateHUD();
+    if (pillsRemaining <= 0) nextLevel();
+    return true;
+  }
+  return false;
 }
 
 // ── Pac-Man bewegen ──
@@ -525,9 +549,11 @@ function movePacman(dt) {
   // Bewegung
   if (pacman.dir !== DIR.NONE) {
     // Kollision VOR der Bewegung prüfen — nächste Zelle begehbar?
-    stopIfWallBlocked(pacman);
-
-    if (pacman.dir === DIR.NONE) return;
+    if (stopIfWallBlocked(pacman, 'pacman')) {
+      // Gestoppt an Kreuzung — Pill sammeln!
+      collectPillAt(pacman);
+      return;
+    }
 
     pacman.x += pacman.dir.dx * speed;
     pacman.y += pacman.dir.dy * speed;
@@ -550,26 +576,9 @@ function movePacman(dt) {
         pacman.x = pacman.col;
         pacman.y = pacman.row;
         pacman.dir = DIR.NONE;
+        collectPillAt(pacman);
       } else {
-        // Pill sammeln
-        const cell = getCell(pacman.col, pacman.row);
-        if (cell === PILL) {
-          setCell(pacman.col, pacman.row, PATH);
-          score += 10;
-          pillsRemaining--;
-        } else if (cell === POWER) {
-          setCell(pacman.col, pacman.row, PATH);
-          score += 50;
-          pillsRemaining--;
-          makeGhostsScared();
-        }
-
-        updateHUD();
-
-        // Level abgeschlossen?
-        if (pillsRemaining <= 0) {
-          nextLevel();
-        }
+        collectPillAt(pacman);
       }
     }
   }
@@ -601,7 +610,11 @@ function moveGhosts(dt) {
     }
 
     // Bewegung — Kollision VOR der Bewegung prüfen!
-    stopIfWallBlocked(ghost);
+    if (stopIfWallBlocked(ghost, 'ghost')) {
+      // Gestoppt — Richtung umkehren
+      ghost.dir = { dx: -ghost.dir.dx, dy: -ghost.dir.dy };
+      return;
+    }
 
     if (ghost.dir === DIR.NONE) return;
 
