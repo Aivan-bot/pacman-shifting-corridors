@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pac-Man: Verschiebbare Gänge</title>
+<style>
+/* ── Neumorphismus Design-System ── */
+:root {
+  --bg: #e0e5ec;
+  --shadow-light: #ffffff;
+  --shadow-dark: #a3b1c6;
+  --pacman: #fbbf24;
+  --ghost-red: #ef4444;
+  --ghost-pink: #ec4899;
+  --ghost-cyan: #06b6d4;
+  --ghost-orange: #f97316;
+  --wall: #c8d0dc;
+  --wall-shadow: #b0bcc8;
+  --path: #e8ecf2;
+  --text: #4a5568;
+  --pill: #a0aec0;
+  --power-pill: #fbbf24;
+  --cell: 28px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+body {
+  background: var(--bg);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  overflow-x: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+/* ── Header / HUD ── */
+.hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: min(90vw, 500px);
+  padding: 12px 16px;
+  margin: 10px 0;
+  border-radius: 20px;
+  background: var(--bg);
+  box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+  font-size: 14px;
+  font-weight: 600;
+}
+.hud-section { display: flex; align-items: center; gap: 6px; }
+.hud-label { color: var(--wall-shadow); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.hud-value { font-size: 18px; font-weight: 700; color: var(--text); }
+.lives-display { display: flex; gap: 3px; }
+.life-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--pacman);
+  box-shadow: 2px 2px 4px var(--shadow-dark), -2px -2px 4px var(--shadow-light);
+}
+.life-dot.lost { background: var(--wall); box-shadow: none; }
+
+/* ── Spiel-Info ── */
+.game-info {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: var(--wall-shadow);
+  text-align: center;
+  max-width: 90vw;
+}
+
+/* ── Canvas-Container ── */
+.canvas-container {
+  position: relative;
+  border-radius: 20px;
+  padding: 16px;
+  background: var(--bg);
+  box-shadow: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light);
+  margin: 4px 0;
+}
+
+canvas {
+  display: block;
+  border-radius: 12px;
+  background: var(--path);
+}
+
+/* ── Schicht-Highlight ── */
+.layer-indicator {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg);
+  padding: 4px 14px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.layer-indicator.show { opacity: 1; }
+
+/* ── Verschiebungen-Zähler ── */
+.shift-counter {
+  margin: 6px 0;
+  font-size: 12px;
+  color: var(--wall-shadow);
+}
+.shift-counter span { font-weight: 700; color: var(--text); }
+
+/* ── D-Pad (Touch) ── */
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 60px);
+  grid-template-rows: repeat(3, 60px);
+  gap: 6px;
+  margin: 12px 0;
+}
+.dpad-btn {
+  width: 60px; height: 60px;
+  border: none; border-radius: 16px;
+  background: var(--bg);
+  box-shadow: 4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.1s;
+  touch-action: none;
+}
+.dpad-btn:active, .dpad-btn.pressed {
+  box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+  transform: scale(0.95);
+}
+.dpad-btn.empty { visibility: hidden; }
+
+/* ── Shift-Modus Toggle ── */
+.shift-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.toggle-track {
+  width: 50px; height: 26px;
+  border-radius: 13px;
+  background: var(--bg);
+  box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+.toggle-track.active { background: var(--pacman); }
+.toggle-thumb {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--wall);
+  box-shadow: 2px 2px 4px var(--shadow-dark), -2px -2px 4px var(--shadow-light);
+  position: absolute;
+  top: 3px; left: 3px;
+  transition: all 0.3s;
+}
+.toggle-track.active .toggle-thumb {
+  left: 27px;
+  background: var(--bg);
+}
+
+/* ── Overlay (Start / Game Over) ── */
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(224, 229, 236, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  z-index: 10;
+}
+.overlay.hidden { display: none; }
+.overlay h2 {
+  font-size: 24px;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.overlay p {
+  font-size: 13px;
+  margin-bottom: 16px;
+  color: var(--wall-shadow);
+  text-align: center;
+  padding: 0 20px;
+}
+.overlay-btn {
+  padding: 12px 32px;
+  border: none; border-radius: 16px;
+  background: var(--bg);
+  box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.overlay-btn:active {
+  box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+}
+
+/* ── Responsive ── */
+@media (max-width: 400px) {
+  :root { --cell: 22px; }
+  .dpad { grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); }
+  .dpad-btn { width: 52px; height: 52px; font-size: 18px; }
+  .hud { padding: 8px 12px; }
+}
+</style>
+</head>
+<body>
+
+<!-- HUD -->
+<div class="hud">
+  <div class="hud-section">
+    <div>
+      <div class="hud-label">Punkte</div>
+      <div class="hud-value" id="score">0</div>
+    </div>
+  </div>
+  <div class="hud-section">
+    <div>
+      <div class="hud-label">Level</div>
+      <div class="hud-value" id="level">1</div>
+    </div>
+  </div>
+  <div class="hud-section">
+    <div>
+      <div class="hud-label">Leben</div>
+      <div class="lives-display" id="lives">
+        <div class="life-dot"></div>
+        <div class="life-dot"></div>
+        <div class="life-dot"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Info -->
+<div class="game-info">
+  Schicht-Modus an = Gänge verschieben · Aus · = Bewegen
+</div>
+
+<!-- Spiel-Canvas -->
+<div class="canvas-container">
+  <canvas id="game"></canvas>
+  <div class="layer-indicator" id="layerIndicator"></div>
+
+  <!-- Start Overlay -->
+  <div class="overlay" id="startOverlay">
+    <h2>🟡 Pac-Man</h2>
+    <p>Verschiebbare Gänge<br>In diesem Pac-Man kannst du ganze Reihen und Spalten verschieben, um neue Wege zu öffnen!</p>
+    <button class="overlay-btn" id="startBtn">Spiel starten</button>
+  </div>
+
+  <!-- Game Over Overlay -->
+  <div class="overlay hidden" id="gameOverOverlay">
+    <h2 id="gameOverTitle">Game Over</h2>
+    <p id="gameOverMsg">Punkte: 0</p>
+    <button class="overlay-btn" id="restartBtn">Nochmal</button>
+  </div>
+</div>
+
+<!-- Verschiebungen-Zähler -->
+<div class="shift-counter">Verschiebungen: <span id="shiftsLeft">15</span> / 15</div>
+
+<!-- Schicht-Modus Toggle -->
+<div class="shift-toggle">
+  <span>🔧</span>
+  <div class="toggle-track" id="shiftToggle">
+    <div class="toggle-thumb"></div>
+  </div>
+  <span>Shift-Modus</span>
+</div>
+
+<!-- D-Pad -->
+<div class="dpad" id="dpad">
+  <div class="dpad-btn empty"></div>
+  <button class="dpad-btn" data-dir="up">▲</button>
+  <div class="dpad-btn empty"></div>
+  <button class="dpad-btn" data-dir="left">◀</button>
+  <div class="dpad-btn empty"></div>
+  <button class="dpad-btn" data-dir="right">▶</button>
+  <button class="dpad-btn" data-dir="down">▼</button>
+  <div class="dpad-btn empty"></div>
+  <div class="dpad-btn empty"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  PAC-MAN: VERSCHIEBBARE GÄNGE
+//  Reines HTML/CSS/JS — Neumorphismus
+// ═══════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// ── Grid-Konfiguration ──
+const COLS = 17;
+const ROWS = 15;
+let CELL;
+
+function resizeCanvas() {
+  const maxW = Math.min(window.innerWidth * 0.88, 500);
+  CELL = Math.floor(maxW / COLS);
+  canvas.width = COLS * CELL;
+  canvas.height = ROWS * CELL;
+}
+resizeCanvas();
+
+// ── Zellentypen ──
+const WALL = 0, PATH = 1, PILL = 2, POWER = 3, EMPTY = 4;
+
+// ── Ursprungs-Maze (17x15) ──
+function createMaze() {
+  return [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
+    [0,2,0,0,2,0,0,0,2,0,0,0,2,0,0,2,0],
+    [0,3,0,0,2,0,0,0,2,0,0,0,2,0,0,3,0],
+    [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
+    [0,2,0,0,2,0,2,0,0,0,2,0,2,0,0,2,0],
+    [0,2,2,2,2,0,2,2,2,2,2,0,2,2,2,2,0],
+    [0,0,0,0,2,0,0,0,1,0,0,0,2,0,0,0,0],
+    [0,2,2,2,2,0,2,2,2,2,2,0,2,2,2,2,0],
+    [0,2,0,0,2,0,2,0,0,0,2,0,2,0,0,2,0],
+    [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
+    [0,3,0,0,2,0,0,0,2,0,0,0,2,0,0,3,0],
+    [0,2,0,0,2,0,0,0,2,0,0,0,2,0,0,2,0],
+    [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  ];
+}
+
+// ── Spielzustand ──
+let maze, gridShifts; // gridShifts[row] = columns verschoben nach rechts
+let pacman, ghosts, score, lives, level, totalPills;
+let gameRunning = false, gamePaused = false;
+let shiftMode = false, shiftsLeft = 15, maxShifts = 15;
+let pillsRemaining = 0;
+let ghostEatCombo = 0;
+let animFrame;
+let lastTime = 0;
+const PACMAN_SPEED = 180;   // Zellen/Sekunde
+const GHOST_SPEED = 150;
+const GHOST_SCARED_SPEED = 90;
+const PACMAN_FRAMES = 8;
+const GHOST_FRAMES = 4;
+
+// ── Richtungen ──
+const DIR = {
+  NONE: { dx: 0, dy: 0 },
+  UP:    { dx: 0, dy: -1 },
+  DOWN:  { dx: 0, dy: 1 },
+  LEFT:  { dx: -1, dy: 0 },
+  RIGHT: { dx: 1, dy: 0 },
+};
+
+// ── Geist-Klasse ──
+class Ghost {
+  constructor(col, row, color, name, behavior) {
+    this.col = col;
+    this.row = row;
+    this.x = col;
+    this.y = row;
+    this.color = color;
+    this.name = name;
+    this.behavior = behavior; // 'chase', 'ambush', 'flank', 'random'
+    this.dir = DIR.LEFT;
+    this.scared = false;
+    this.eaten = false;
+    this.frame = 0;
+    this.frameTimer = 0;
+    this.spawnTimer = 0;
+  }
+
+  getSpeed() {
+    if (this.eaten) return GHOST_SPEED * 3;
+    if (this.scared) return GHOST_SCARED_SPEED;
+    return GHOST_SPEED;
+  }
+}
+
+// ── Pac-Man-Klasse ──
+class Pacman {
+  constructor(col, row) {
+    this.col = col;
+    this.row = row;
+    this.x = col;
+    this.y = row;
+    this.dir = DIR.NONE;
+    this.nextDir = DIR.NONE;
+    this.frame = 0;
+    this.frameTimer = 0;
+    this.mouthAngle = 0;
+  }
+}
+
+// ── Initialisierung ──
+function initLevel() {
+  maze = createMaze();
+  gridShifts = new Array(ROWS).fill(0);
+  score = 0;
+  lives = 3;
+  level = 1;
+  shiftMode = false;
+  shiftsLeft = maxShifts;
+  ghostEatCombo = 0;
+
+  // Pills zählen
+  totalPills = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (maze[r][c] === PILL || maze[r][c] === POWER) totalPills++;
+    }
+  }
+  pillsRemaining = totalPills;
+
+  // Pac-Man Startposition (Mitte unten)
+  pacman = new Pacman(Math.floor(COLS / 2), ROWS - 3);
+  pacman.nextDir = DIR.RIGHT;
+
+  // Geister Startposition (Mitte)
+  ghosts = [
+    new Ghost(8, 7, '#ef4444', 'Blinky', 'chase'),
+    new Ghost(7, 7, '#ec4899', 'Pinky', 'ambush'),
+    new Ghost(9, 7, '#06b6d4', 'Inky', 'flank'),
+    new Ghost(8, 6, '#f97316', 'Clyde', 'random'),
+  ];
+
+  updateHUD();
+  updateShiftUI();
+}
+
+// ── HUD aktualisieren ──
+function updateHUD() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('level').textContent = level;
+  const livesEl = document.getElementById('lives');
+  livesEl.innerHTML = '';
+  for (let i = 0; i < 3; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'life-dot' + (i >= lives ? ' lost' : '');
+    livesEl.appendChild(dot);
+  }
+}
+
+function updateShiftUI() {
+  document.getElementById('shiftsLeft').textContent = shiftsLeft;
+  const toggle = document.getElementById('shiftToggle');
+  toggle.classList.toggle('active', shiftMode);
+}
+
+// ── Gitter-Zugriff mit Shift ──
+function getCell(col, row) {
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return WALL;
+  const shiftedCol = ((col - gridShifts[row]) % COLS + COLS) % COLS;
+  return maze[row][shiftedCol];
+}
+
+function setCell(col, row, type) {
+  if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+  const shiftedCol = ((col - gridShifts[row]) % COLS + COLS) % COLS;
+  maze[row][shiftedCol] = type;
+}
+
+// ── Kollision prüfen ──
+function isWalkable(col, row) {
+  const cell = getCell(col, row);
+  return cell === PATH || cell === PILL || cell === POWER;
+}
+
+// ── Pac-Man bewegen ──
+function movePacman(dt) {
+  const speed = PACMAN_SPEED * dt;
+  pacman.frameTimer += dt;
+
+  // Richtung versuchen
+  if (pacman.nextDir !== DIR.NONE) {
+    const nc = pacman.col + pacman.nextDir.dx;
+    const nr = pacman.row + pacman.nextDir.dy;
+    if (isWalkable(nc, nr)) {
+      pacman.dir = pacman.nextDir;
+    }
+  }
+
+  // Bewegung
+  if (pacman.dir !== DIR.NONE) {
+    pacman.x += pacman.dir.dx * speed;
+    pacman.y += pacman.dir.dy * speed;
+
+    // Zum nächsten Grid-Punkt snappen
+    const targetCol = pacman.col + pacman.dir.dx;
+    const targetRow = pacman.row + pacman.dir.dy;
+
+    if ((pacman.dir.dx !== 0 && Math.abs(pacman.x - targetCol) <= speed) ||
+        (pacman.dir.dy !== 0 && Math.abs(pacman.y - targetRow) <= speed)) {
+      pacman.col = targetCol;
+      pacman.row = targetRow;
+      pacman.x = pacman.col;
+      pacman.y = pacman.row;
+
+      // Pill sammeln
+      const cell = getCell(pacman.col, pacman.row);
+      if (cell === PILL) {
+        setCell(pacman.col, pacman.row, PATH);
+        score += 10;
+        pillsRemaining--;
+      } else if (cell === POWER) {
+        setCell(pacman.col, pacman.row, PATH);
+        score += 50;
+        pillsRemaining--;
+        makeGhostsScared();
+      }
+
+      updateHUD();
+
+      // Level abgeschlossen?
+      if (pillsRemaining <= 0) {
+        nextLevel();
+      }
+    }
+  }
+
+  // Mund-Animation
+  const mouthSpeed = 12;
+  pacman.mouthAngle = (Math.sin(performance.now() / 100 * mouthSpeed) + 1) * 0.4;
+}
+
+// ── Geister bewegen ──
+function moveGhosts(dt) {
+  const now = performance.now();
+  ghosts.forEach(ghost => {
+    // Spawn-Timer (Geister starten verzögert)
+    if (ghost.spawnTimer > 0) {
+      ghost.spawnTimer -= dt;
+      return;
+    }
+
+    const speed = ghost.getSpeed() * dt;
+    ghost.frameTimer += dt;
+    if (ghost.frameTimer > 0.15) {
+      ghost.frame = (ghost.frame + 1) % 4;
+      ghost.frameTimer = 0;
+    }
+
+    // Bewegung
+    ghost.x += ghost.dir.dx * speed;
+    ghost.y += ghost.dir.dy * speed;
+
+    const targetCol = ghost.col + ghost.dir.dx;
+    const targetRow = ghost.row + ghost.dir.dy;
+
+    if ((ghost.dir.dx !== 0 && Math.abs(ghost.x - targetCol) <= speed) ||
+        (ghost.dir.dy !== 0 && Math.abs(ghost.y - targetRow) <= speed)) {
+      ghost.col = targetCol;
+      ghost.row = targetRow;
+      ghost.x = ghost.col;
+      ghost.y = ghost.row;
+
+      // Richtungsentscheidung am Kreuzungspunkt
+      if (!ghost.eaten) {
+        chooseGhostDirection(ghost);
+      } else {
+        // Eaten-Geister zurück zum Spawn
+        if (ghost.col === 8 && ghost.row === 7) {
+          ghost.eaten = false;
+          ghost.scared = false;
+          ghost.spawnTimer = 0;
+        }
+      }
+    }
+
+    // Kollision mit Pac-Man
+    if (ghost.col === pacman.col && ghost.row === pacman.row && ghost.spawnTimer <= 0) {
+      if (ghost.scared && !ghost.eaten) {
+        // Geist essen
+        ghost.eaten = true;
+        ghost.scared = false;
+        score += 200 * Math.pow(2, ghostEatCombo);
+        ghostEatCombo++;
+        updateHUD();
+      } else if (!ghost.eaten) {
+        // Pac-Man stirbt
+        loseLife();
+      }
+    }
+  });
+}
+
+function chooseGhostDirection(ghost) {
+  const options = [];
+  const opposite = { dx: -ghost.dir.dx, dy: -ghost.dir.dy };
+
+  [DIR.UP, DIR.DOWN, DIR.LEFT, DIR.RIGHT].forEach(d => {
+    if (d.dx === opposite.dx && d.dy === opposite.dy) return; // Nicht rückwärts
+    const nc = ghost.col + d.dx;
+    const nr = ghost.row + d.dy;
+    if (isWalkable(nc, nr)) {
+      options.push(d);
+    }
+  });
+
+  if (options.length === 0) {
+    // Nur rückwärts möglich
+    const back = { dx: -ghost.dir.dx, dy: -ghost.dir.dy };
+    if (isWalkable(ghost.col + back.dx, ghost.row + back.dy)) {
+      ghost.dir = back;
+    }
+    return;
+  }
+
+  let targetCol, targetRow;
+
+  if (ghost.eaten) {
+    // Zurück zum Spawn
+    targetCol = 8; targetRow = 7;
+  } else if (ghost.scared) {
+    // Zufällig
+    ghost.dir = options[Math.floor(Math.random() * options.length)];
+    return;
+  } else {
+    // Verfolgungs-KI
+    switch (ghost.behavior) {
+      case 'chase': // Blinky: direkt verfolgen
+        targetCol = pacman.col;
+        targetRow = pacman.row;
+        break;
+      case 'ambush': // Pinky: 4 Felder vor Pac-Man
+        targetCol = pacman.col + pacman.dir.dx * 4;
+        targetRow = pacman.row + pacman.dir.dy * 4;
+        break;
+      case 'flank': // Inky: mittlere Position
+        targetCol = Math.floor((pacman.col + ghosts[0].col) / 2);
+        targetRow = Math.floor((pacman.row + ghosts[0].row) / 2);
+        break;
+      case 'random': // Clyde: zufällig
+        ghost.dir = options[Math.floor(Math.random() * options.length)];
+        return;
+    }
+  }
+
+  // Beste Richtung zum Ziel finden
+  let bestDist = Infinity;
+  let bestDir = options[0];
+  options.forEach(d => {
+    const nc = ghost.col + d.dx;
+    const nr = ghost.row + d.dy;
+    const dist = Math.abs(nc - targetCol) + Math.abs(nr - targetRow);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestDir = d;
+    }
+  });
+  ghost.dir = bestDir;
+}
+
+function makeGhostsScared() {
+  ghostEatCombo = 0;
+  ghosts.forEach(g => {
+    if (!g.eaten && g.spawnTimer <= 0) {
+      g.scared = true;
+      // Richtung umkehren
+      g.dir = { dx: -g.dir.dx, dy: -g.dir.dy };
+    }
+  });
+  // Auto-reset nach 7 Sekunden
+  setTimeout(() => {
+    ghosts.forEach(g => { if (g.scared && !g.eaten) g.scared = false; });
+  }, 7000);
+}
+
+function loseLife() {
+  lives--;
+  updateHUD();
+  if (lives <= 0) {
+    gameOver(false);
+    return;
+  }
+  // Reset Positionen
+  pacman.col = Math.floor(COLS / 2);
+  pacman.row = ROWS - 3;
+  pacman.x = pacman.col;
+  pacman.y = pacman.row;
+  pacman.dir = DIR.NONE;
+  pacman.nextDir = DIR.NONE;
+
+  ghosts.forEach((g, i) => {
+    g.col = 8 + (i % 2 === 0 ? -1 : 1);
+    g.row = 7 + (i < 2 ? 0 : -1);
+    g.x = g.col;
+    g.y = g.row;
+    g.spawnTimer = 1;
+    g.scared = false;
+    g.eaten = false;
+    g.dir = DIR.LEFT;
+  });
+}
+
+function nextLevel() {
+  level++;
+  shiftMode = false;
+  shiftsLeft = maxShifts + (level - 1) * 3;
+  maxShifts = shiftsLeft;
+  updateShiftUI();
+  initLevel();
+  showLayerIndicator('Level ' + level + '!');
+}
+
+// ── Verschieben eines Ganges ──
+function shiftLayer(row, direction) {
+  if (shiftsLeft <= 0) return;
+  if (direction === 0) return;
+
+  gridShifts[row] = ((gridShifts[row] + direction) % COLS + COLS) % COLS;
+  shiftsLeft--;
+  updateShiftUI();
+
+  // Pac-Man und Geister anpassen
+  adjustEntityAfterShift(pacman);
+  ghosts.forEach(g => adjustEntityAfterShift(g));
+
+  // Visuelles Feedback
+  showLayerIndicator('Reihe ' + row + ' verschoben!');
+}
+
+function adjustEntityAfterShift(entity) {
+  // Wenn Entity sich im verschobenen Bereich befindet, Position anpassen
+  const shift = gridShifts[entity.row] || 0;
+  if (shift > 0) {
+    // Entity muss ihre Grid-Position überprüfen
+    const cell = getCell(entity.col, entity.row);
+    if (cell === WALL) {
+      // Entity ist in einer Wand — versuche nach links oder rechts zu rutschen
+      if (isWalkable(entity.col - 1, entity.row)) {
+        entity.col--;
+      } else if (isWalkable(entity.col + 1, entity.row)) {
+        entity.col++;
+      } else {
+        // Zurücksetzen
+        entity.col = Math.floor(COLS / 2);
+        entity.row = ROWS - 3;
+      }
+      entity.x = entity.col;
+      entity.y = entity.row;
+    }
+  }
+}
+
+// ── Zeichnen ──
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const c = CELL;
+
+  // Grid zeichnen
+  for (let r = 0; r < ROWS; r++) {
+    for (let cc = 0; cc < COLS; cc++) {
+      const cell = getCell(cc, r);
+      const x = cc * c;
+      const y = r * c;
+
+      if (cell === WALL) {
+        // Neumorphismus Wand
+        ctx.fillStyle = '#c8d0dc';
+        ctx.fillRect(x + 1, y + 1, c - 2, c - 2);
+        // Schatten
+        ctx.fillStyle = '#b0bcc8';
+        ctx.fillRect(x + 1, y + c - 3, c - 2, 2);
+        ctx.fillRect(x + c - 3, y + 1, 2, c - 2);
+      } else if (cell === PILL) {
+        // Pill
+        ctx.fillStyle = '#a0aec0';
+        ctx.beginPath();
+        ctx.arc(x + c/2, y + c/2, c * 0.12, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (cell === POWER) {
+        // Power Pill (pulsierend)
+        const pulse = (Math.sin(performance.now() / 200) + 1) * 0.5;
+        ctx.fillStyle = `rgba(251, 191, 36, ${0.5 + pulse * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(x + c/2, y + c/2, c * 0.22 + pulse * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Schicht-Highlight (wenn Shift-Modus aktiv)
+  if (shiftMode) {
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.3)';
+    ctx.lineWidth = 2;
+    for (let r = 0; r < ROWS; r++) {
+      ctx.strokeRect(0, r * c + c/2 - c/2, canvas.width, c);
+    }
+  }
+
+  // Geister zeichnen
+  ghosts.forEach(ghost => {
+    if (ghost.spawnTimer > 0) return;
+    drawGhost(ghost);
+  });
+
+  // Pac-Man zeichnen
+  drawPacman();
+}
+
+function drawPacman() {
+  const c = CELL;
+  const x = pacman.x * c + c / 2;
+  const y = pacman.y * c + c / 2;
+  const r = c * 0.42;
+
+  // Richtung berechnen
+  let angle = 0;
+  if (pacman.dir === DIR.UP) angle = -Math.PI / 2;
+  else if (pacman.dir === DIR.DOWN) angle = Math.PI / 2;
+  else if (pacman.dir === DIR.LEFT) angle = Math.PI;
+
+  // Körper
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.arc(x, y, r, angle + pacman.mouthAngle, angle + Math.PI * 2 - pacman.mouthAngle);
+  ctx.lineTo(x, y);
+  ctx.closePath();
+  ctx.fill();
+
+  // Auge
+  ctx.fillStyle = '#1a202c';
+  const eyeX = x + Math.cos(angle - 0.5) * r * 0.4;
+  const eyeY = y + Math.sin(angle - 0.5) * r * 0.4;
+  ctx.beginPath();
+  ctx.arc(eyeX, eyeY, r * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawGhost(ghost) {
+  const c = CELL;
+  const x = ghost.x * c + c / 2;
+  const y = ghost.y * c + c / 2;
+  const r = c * 0.42;
+
+  let color = ghost.color;
+  if (ghost.scared) {
+    color = (ghost.frameTimer > 0.075 && ghost.spawnTimer <= 0) ? '#6366f1' : '#818cf8';
+  }
+  if (ghost.eaten) {
+    // Nur Augen zeichnen
+    drawGhostEyes(x, y, ghost.dir, r * 0.5);
+    return;
+  }
+
+  // Körper (Geister-form)
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y - r * 0.15, r, Math.PI, 0);
+  ctx.lineTo(x + r, y + r * 0.6);
+
+  // Wellige Unterseite
+  const wave = ghost.frame % 2 === 0 ? 1 : -1;
+  for (let i = 0; i < 3; i++) {
+    const wx = x + r - (i + 1) * (r * 2 / 3);
+    const wy = y + r * 0.6 + wave * r * 0.15;
+    ctx.quadraticCurveTo(wx + r * 0.15, wy - r * 0.2, wx, wy);
+  }
+  ctx.lineTo(x - r, y + r * 0.6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Augen
+  drawGhostEyes(x, y, ghost.dir, r * 0.35);
+}
+
+function drawGhostEyes(x, y, dir, r) {
+  const eyeOffX = dir.dx * r * 0.3;
+  const eyeOffY = dir.dy * r * 0.3;
+
+  // Weiß
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x - r * 0.4 + eyeOffX, y - r * 0.15 + eyeOffY, r * 0.35, 0, Math.PI * 2);
+  ctx.arc(x + r * 0.4 + eyeOffX, y - r * 0.15 + eyeOffY, r * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Pupille
+  ctx.fillStyle = '#1a202c';
+  ctx.beginPath();
+  ctx.arc(x - r * 0.4 + eyeOffX * 1.5, y - r * 0.15 + eyeOffY * 1.5, r * 0.15, 0, Math.PI * 2);
+  ctx.arc(x + r * 0.4 + eyeOffX * 1.5, y - r * 0.15 + eyeOffY * 1.5, r * 0.15, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ── Visuelles Feedback ──
+function showLayerIndicator(text) {
+  const el = document.getElementById('layerIndicator');
+  el.textContent = text;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1200);
+}
+
+// ── Game Over ──
+function gameOver(won) {
+  gameRunning = false;
+  cancelAnimationFrame(animFrame);
+  const overlay = document.getElementById('gameOverOverlay');
+  document.getElementById('gameOverTitle').textContent = won ? '🎉 Gewonnen!' : '💀 Game Over';
+  document.getElementById('gameOverMsg').textContent = `Punkte: ${score} · Level: ${level}`;
+  overlay.classList.remove('hidden');
+}
+
+// ── Game Loop ──
+function gameLoop(timestamp) {
+  if (!gameRunning) return;
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+
+  movePacman(dt);
+  moveGhosts(dt);
+  draw();
+
+  animFrame = requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+  initLevel();
+  gameRunning = true;
+  lastTime = performance.now();
+  document.getElementById('startOverlay').classList.add('hidden');
+  document.getElementById('gameOverOverlay').classList.add('hidden');
+  animFrame = requestAnimationFrame(gameLoop);
+}
+
+// ── Steuerung ──
+function setDirection(dir) {
+  if (!gameRunning) return;
+  pacman.nextDir = DIR[dir.toUpperCase()];
+}
+
+// Tastatur
+document.addEventListener('keydown', e => {
+  switch(e.key) {
+    case 'ArrowUp': case 'w': case 'W': setDirection('up'); e.preventDefault(); break;
+    case 'ArrowDown': case 's': case 'S': setDirection('down'); e.preventDefault(); break;
+    case 'ArrowLeft': case 'a': case 'A': setDirection('left'); e.preventDefault(); break;
+    case 'ArrowRight': case 'd': case 'D': setDirection('right'); e.preventDefault(); break;
+  }
+});
+
+// D-Pad Touch
+document.querySelectorAll('.dpad-btn[data-dir]').forEach(btn => {
+  const handler = (e) => {
+    e.preventDefault();
+    setDirection(btn.dataset.dir);
+    btn.classList.add('pressed');
+    setTimeout(() => btn.classList.remove('pressed'), 100);
+  };
+  btn.addEventListener('touchstart', handler, { passive: false });
+  btn.addEventListener('mousedown', handler);
+});
+
+// Shift-Modus Toggle
+document.getElementById('shiftToggle').addEventListener('click', () => {
+  shiftMode = !shiftMode;
+  updateShiftUI();
+});
+
+// ── Canvas Swipe-Erkennung (für Gänge verschieben) ──
+let touchStartX, touchStartY, touchStartTime;
+let canvasRect;
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  canvasRect = canvas.getBoundingClientRect();
+  touchStartX = t.clientX - canvasRect.left;
+  touchStartY = t.clientY - canvasRect.top;
+  touchStartTime = performance.now();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (!shiftMode) return;
+  const t = e.changedTouches[0];
+  const endX = t.clientX - canvasRect.left;
+  const endY = t.clientY - canvasRect.top;
+  const dx = endX - touchStartX;
+  const dy = endY - touchStartY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist < 20) return; // Zu kurz
+
+  // Reihe bestimmen (Y-Position)
+  const row = Math.floor(touchStartY / CELL);
+  if (row < 0 || row >= ROWS) return;
+
+  // Richtung bestimmen
+  if (Math.abs(dx) > Math.abs(dy)) {
+    // Horizontaler Swipe: nichts (wir verschieben Reihen horizontal)
+    return;
+  } else {
+    // Vertikaler Swipe: nicht sinnvoll für Reihenverschiebung
+    // Aber wir erlauben horizontalen Swipe auf einer Reihe
+    return;
+  }
+}, { passive: false });
+
+// Bessere Swipe-Erkennung: Horizontaler Swipe auf einer Reihe
+// Der Swipe muss innerhalb einer Reihe sein
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (!shiftMode) return;
+  const t = e.changedTouches[0];
+  const endX = t.clientX - canvasRect.left;
+  const endY = t.clientY - canvasRect.top;
+  const dx = endX - touchStartX;
+  const dy = endY - touchStartY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist < 30) return;
+
+  // Nur horizontaler Swipe zählt
+  if (Math.abs(dy) > Math.abs(dx)) return;
+
+  // Reihe bestimmen
+  const row = Math.floor(touchStartY / CELL);
+  if (row < 0 || row >= ROWS) return;
+
+  // Richtung (links = -1, rechts = +1)
+  const direction = dx > 0 ? 1 : -1;
+  shiftLayer(row, direction);
+}, { passive: false });
+
+// ── Buttons ──
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('restartBtn').addEventListener('click', startGame);
+
+// ── Resize ──
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  if (!gameRunning) draw();
+});
+
+// Initiales Zeichnen
+initLevel();
+draw();
+</script>
+</body>
+</html>
