@@ -486,8 +486,30 @@ function isWalkable(col, row) {
   return cell === PATH || cell === PILL || cell === POWER;
 }
 
+// ── Entity-Kollision prüfen: Stoppt Entity, wenn nächste Zelle Wand ist ──
+function stopIfWallBlocked(entity) {
+  if (entity.dir === DIR.NONE) return;
+  const nextCol = Math.round(entity.x) + entity.dir.dx;
+  const nextRow = Math.round(entity.y) + entity.dir.dy;
+  if (!isWalkable(nextCol, nextRow)) {
+    entity.dir = DIR.NONE;
+    // Zur nächsten Kante snappen (nicht durch Wand gleiten lassen)
+    entity.col = Math.round(entity.x);
+    entity.row = Math.round(entity.y);
+    entity.x = entity.col;
+    entity.y = entity.row;
+  }
+}
+
 // ── Pac-Man bewegen ──
 function movePacman(dt) {
+  // Sicherheitscheck: Bin ich noch auf einer begehbaren Zelle?
+  if (!isWalkable(pacman.col, pacman.row)) {
+    ensureEntityWalkable(pacman);
+    pacman.dir = DIR.NONE;
+    pacman.nextDir = DIR.NONE;
+  }
+
   const speed = PACMAN_SPEED * dt;
   pacman.frameTimer += dt;
 
@@ -502,6 +524,11 @@ function movePacman(dt) {
 
   // Bewegung
   if (pacman.dir !== DIR.NONE) {
+    // Kollision VOR der Bewegung prüfen — nächste Zelle begehbar?
+    stopIfWallBlocked(pacman);
+
+    if (pacman.dir === DIR.NONE) return;
+
     pacman.x += pacman.dir.dx * speed;
     pacman.y += pacman.dir.dy * speed;
 
@@ -516,10 +543,8 @@ function movePacman(dt) {
       pacman.x = pacman.col;
       pacman.y = pacman.row;
 
-      // WICHTIG: Prüfe ob die Zielzelle noch begehbar ist
-      // (kann sich durch Grid-Shift geändert haben)
+      // Zielzelle prüfen
       if (!isWalkable(pacman.col, pacman.row)) {
-        // Nicht begehbar — zurück zur vorherigen Position
         pacman.col -= pacman.dir.dx;
         pacman.row -= pacman.dir.dy;
         pacman.x = pacman.col;
@@ -528,18 +553,18 @@ function movePacman(dt) {
       } else {
         // Pill sammeln
         const cell = getCell(pacman.col, pacman.row);
-      if (cell === PILL) {
-        setCell(pacman.col, pacman.row, PATH);
-        score += 10;
-        pillsRemaining--;
-      } else if (cell === POWER) {
-        setCell(pacman.col, pacman.row, PATH);
-        score += 50;
-        pillsRemaining--;
-        makeGhostsScared();
-      }
+        if (cell === PILL) {
+          setCell(pacman.col, pacman.row, PATH);
+          score += 10;
+          pillsRemaining--;
+        } else if (cell === POWER) {
+          setCell(pacman.col, pacman.row, PATH);
+          score += 50;
+          pillsRemaining--;
+          makeGhostsScared();
+        }
 
-      updateHUD();
+        updateHUD();
 
         // Level abgeschlossen?
         if (pillsRemaining <= 0) {
@@ -548,7 +573,6 @@ function movePacman(dt) {
       }
     }
   }
-
   // Mund-Animation
   const mouthSpeed = 12;
   pacman.mouthAngle = (Math.sin(performance.now() / 100 * mouthSpeed) + 1) * 0.4;
@@ -564,6 +588,11 @@ function moveGhosts(dt) {
       return;
     }
 
+    // Sicherheitscheck: Bin ich noch auf einer begehbaren Zelle?
+    if (!isWalkable(ghost.col, ghost.row)) {
+      ensureEntityWalkable(ghost);
+    }
+
     const speed = ghost.getSpeed() * dt;
     ghost.frameTimer += dt;
     if (ghost.frameTimer > 0.15) {
@@ -571,7 +600,11 @@ function moveGhosts(dt) {
       ghost.frameTimer = 0;
     }
 
-    // Bewegung
+    // Bewegung — Kollision VOR der Bewegung prüfen!
+    stopIfWallBlocked(ghost);
+
+    if (ghost.dir === DIR.NONE) return;
+
     ghost.x += ghost.dir.dx * speed;
     ghost.y += ghost.dir.dy * speed;
 
